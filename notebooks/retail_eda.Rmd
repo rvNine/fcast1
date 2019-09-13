@@ -1,0 +1,440 @@
+---
+title: "Retail Sales Forecasting"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_document:
+    code_folding: none
+    df_print: paged
+    highlight: tango
+    number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    eval = TRUE,
+    message = FALSE,
+    warning = FALSE,
+    dpi = 300,
+    fig.align = "center"
+    )
+
+# See Options: knitr::opts_chunk$get()
+```
+
+
+
+# Introduction
+
+
+The training data includes dates, store and item information, whether that item was being promoted, as well as the unit sales. Additional files include supplementary information that may be useful in building your models.
+
+File Descriptions and Data Field Information
+
+`train.csv`
+
+- Training data, which includes the target unit_sales by date, store_nbr, and item_nbr and a unique id to label rows.
+- The target unit_sales can be integer (e.g., a bag of chips) or float (e.g., 1.5 kg of cheese).
+Negative values of unit_sales represent returns of that particular item.
+- The onpromotion column tells whether that item_nbr was on promotion for a specified date and store_nbr.
+- Approximately 16% of the onpromotion values in this file are NaN.
+- NOTE: The training data does not include rows for items that had zero unit_sales for a store/date combination. There is no information as to whether or not the item was in stock for the store on the date, and teams will need to decide the best way to handle that situation. Also, there are a small number of items seen in the training data that aren't seen in the test data.
+
+`stores.csv`
+
+- Store metadata, including city, state, type, and cluster.
+- cluster is a grouping of similar stores.
+
+`items.csv`
+
+- Item metadata, including family, class, and perishable.
+- NOTE: Items marked as perishable have a score weight of 1.25; otherwise, the weight is 1.0.
+
+`transactions.csv`
+
+- The count of sales transactions for each date, store_nbr combination. Only included for the training data timeframe.
+
+`oil.csv`
+
+- Daily oil price. Includes values during both the train and test data timeframe. (Ecuador is an oil-dependent country and it's economical health is highly vulnerable to shocks in oil prices.)
+
+`holidays_events.csv`
+
+- Holidays and Events, with metadata
+- NOTE: Pay special attention to the transferred column. A holiday that is transferred officially falls on that calendar day, but was moved to another date by the government. A transferred day is more like a normal day than a holiday. To find the day that it was actually celebrated, look for the corresponding row where type is Transfer. For example, the holiday Independencia de Guayaquilwas transferred from 2012-10-09 to 2012-10-12, which means it was celebrated on 2012-10-12. Days that are type Bridge are extra days that are added to a holiday (e.g., to extend the break across a long weekend). These are frequently made up by the type Work Day which is a day not normally scheduled for work (e.g., Saturday) that is meant to payback the Bridge.
+- Additional holidays are days added a regular calendar holiday, for example, as typically happens around Christmas (making Christmas Eve a holiday).
+
+- Additional Notes
+
+- Wages in the public sector are paid every two weeks on the 15 th and on the last day of the month. Supermarket sales could be affected by this.
+- A magnitude 7.8 earthquake struck Ecuador on April 16, 2016. People rallied in relief efforts donating water and other first need products which greatly affected supermarket sales for several weeks after the earthquake.
+
+
+
+# Data Wrangling
+
+## libraries
+
+
+```{r}
+library('ggplot2')
+library('dplyr') 
+library('readr') 
+library('data.table') 
+library('tibble') 
+library('tidyr') 
+library('stringr') 
+library('forcats') 
+library('lubridate')
+library('reshape2')
+```
+
+## Load data
+
+ *training* data is 4.7 GB in size with 126 million rows. 10% of this data is sampled 
+ for exploratory analysis.
+
+```{r warning=FALSE, results=FALSE}
+set.seed(32)
+train_data <- sample_frac(as.tibble(fread('../data/raw/train.csv')),0.1)
+stores <- as.tibble(fread('../data/raw/stores.csv'))
+items <- as.tibble(fread('../data/raw/items.csv'))
+transactions <- as.tibble(fread('../data/raw/transactions.csv'))
+oil <- as.tibble(fread('../data/raw/oil.csv'))
+holidays_events <- as.tibble(fread('../data/raw/holidays_events.csv'))
+```
+
+
+## Training data
+
+```{r}
+summary(train_data)
+```
+
+```{r}
+glimpse(train_data)
+```
+
+
+- There is a unique *id* to label our observations. 
+
+- The store numbers are integers (*store\_nbr*) ranging from 1 to 54. Item numbers (*item\_nbr*) are integers. 
+
+- *onpromotion* is a logical feature, describing whether the item in question had been assigned a special promotion pricing at the time in the specific store. This feature contains many NA values.
+
+- *unit_sales* is our target feature. Negative values mean that this particular item was returned ([source](https://www.kaggle.com/c/favorita-grocery-sales-forecasting/data)).
+
+
+
+
+## Stores
+
+```{r}
+summary(stores)
+```
+
+```{r}
+glimpse(stores)
+```
+
+
+- Stores are identified by their *city* (e.g. "Quito") and *state* (e.g. "Pichincha"), according to their *store\_nbr* which connects this information to the *train* data. Along with the *type* of the store, these should be encoded as factors.
+
+- *cluster* describes a "grouping of similar stores" ([source](https://www.kaggle.com/c/favorita-grocery-sales-forecasting/data)).
+
+
+## Items
+
+```{r}
+summary(items)
+```
+
+```{r}
+glimpse(items)
+```
+
+
+
+- The *items* are grouped into a broad *family* (e.g. "BREAD/BAKERY") and an integer *class* column. Once more, these will be factors.
+
+- *perishable*, an identifier whether the item will go bad over time. It is encoded as an integer but would work better as a logical feature, since the only values appear to be "0 vs 1": perishable (e.g. milk) vs not perishable (e.g. DVDs).
+
+- *item\_nbr* is  the key column relating this data set to *train*
+
+
+## Transactions
+
+```{r}
+summary(transactions)
+```
+
+```{r}
+glimpse(transactions)
+```
+
+
+- This data set gives us an additional total number of transactions per *store\_nbr* for a given *date*. This information is only available for the training data.
+
+
+## Oil
+
+```{r}
+summary(oil)
+```
+
+```{r}
+glimpse(oil)
+```
+
+
+
+
+## Holidays
+
+```{r}
+summary(holidays_events)
+```
+
+```{r}
+glimpse(holidays_events)
+```
+
+
+- Holidays and special events also come in the shape of a time series with a *date* column.
+
+- There is a *type* of the holiday, a qualifier whether it's regional (*locale*) and in which region it applies (*locale\_name*), as well as the name of the holiday in the feature *description*.
+
+- *transferred* is a logical column indicating whether this specific holiday was moved to a different day that year.
+
+
+## Missing values
+
+```{r}
+sum(is.na(train_data))
+sum(is.na(stores))
+sum(is.na(items))
+sum(is.na(transactions))
+sum(is.na(oil))
+sum(is.na(holidays_events))
+sum(is.na(stores))
+```
+
+
+
+- *train_data* contains the majority of NAs in the *onpromotion* feature.
+
+- *oil* contains  43 NAs .
+
+## Extract time series features
+```{r}
+train_data$date <- ymd(train_data$date)
+train_data <- train_data %>%
+    mutate(year = year(date), month = month(date), day = day(date),
+           weekday = wday(date), week_of_year = week(date))
+glimpse(train_data)
+```
+
+## Holiday Events, convert character features to factors 
+```{r}
+glimpse(holidays_events)
+str(holidays_events)
+holidays_events$date <- ymd(holidays_events$date)
+holidays_events <- holidays_events %>% 
+    mutate(
+      type        = as_factor(type),
+      locale      = as_factor(locale),
+      locale_name = as_factor(locale_name)
+    )
+
+head(holidays_events)
+summary(holidays_events)
+holidays_events %>% group_by(type) %>% count() %>% arrange(desc(n))
+```
+
+## Joining item data with train data ---------------------
+```{r}
+train_data_items_holidays <- train_data %>%
+    left_join(items) %>%
+    left_join(holidays_events, by = "date") 
+
+head(train_data_items_holidays)
+```
+
+## Joining stores and transactions data for analysis
+```{r}
+transactions_stores <- transactions %>% 
+                          left_join(stores) 
+head(transactions)
+head(transactions_stores)
+```
+
+## transactions_stores, convert character features to factors 
+```{r}
+transactions_stores$date <- ymd(transactions$date)
+transactions_stores <- transactions_stores %>% 
+    mutate(
+        city      = as_factor(city),
+        state     = as_factor(state),
+        type      = as_factor(type),
+        cluster   = as_factor(cluster)
+    )
+head(transactions_stores)
+```
+
+# Data Storytelling
+
+## count of perishable items
+```{r}
+items %>%
+    group_by(perishable) %>%
+    count()
+```
+        
+
+## top 20 item families
+```{r}
+items %>% group_by(family) %>% 
+    summarise(count = n()) %>%
+    top_n(20) %>%
+    mutate(family = family %>% as_factor() %>% fct_reorder(count)) %>%
+    ggplot(aes(family, count)) +
+    geom_col(fill = "#2c3e50") + 
+    coord_flip()
+```
+
+## top item families and their class
+```{r}
+items %>% group_by(class, family) %>% 
+    summarise(count = n()) %>%
+    arrange(desc(count))
+```
+
+## difference between holiday and non holiday sales
+```{r}
+train_data_items_holidays <- train_data_items_holidays %>%
+    mutate(type = as_factor(ifelse(is.na(locale),"no holiday", "holiday")))
+head(train_data_items_holidays)
+```
+
+## variation of sales by holiday type
+```{r}
+train_data_items_holidays %>% 
+    group_by(type) %>% 
+    summarise(avg_sales = mean(unit_sales)) %>%
+    ggplot() +
+    geom_col(aes(x = type, y = avg_sales))
+```
+
+## perishable vs non perishable sales
+```{r}
+train_data_items_holidays %>% 
+    group_by(perishable) %>% 
+    summarise(total_sales = sum(unit_sales)) 
+```
+
+## promotion vs non promotion avg sales - promotion has significant impact on sales.
+```{r}
+train_data_items_holidays %>% 
+    group_by(onpromotion) %>% 
+    summarise(avg_sales = mean(unit_sales)) %>%
+    ggplot() + 
+    geom_col(aes(x = onpromotion, y = avg_sales))
+```
+
+
+## transactions by city
+```{r}
+transactions_stores %>% 
+    group_by(city)%>% 
+    summarise(total_transactions = sum(transactions)) %>% 
+    mutate(city= city %>% as_factor() %>% fct_reorder(total_transactions)) %>%
+    ggplot(aes(city, total_transactions)) +
+    geom_col(fill = "#2c3e50")  +
+     theme(
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+    
+## transactions by store cluster
+```{r}
+transactions_stores %>% 
+    group_by(cluster) %>% 
+    summarise(total_transactions = sum(transactions)) %>% 
+    mutate(cluster = cluster %>% as_factor() %>% fct_reorder(total_transactions)) %>%
+    ggplot(aes(cluster, total_transactions)) +
+    geom_col(fill = "#2c3e50")  +
+     theme(
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+    
+
+## transactions by store type
+```{r}
+transactions_stores %>% 
+    group_by(type)%>% 
+    summarise(total_transactions = sum(transactions)) %>% 
+    mutate(type = type %>% as_factor() %>% fct_reorder(total_transactions)) %>%
+    ggplot(aes(type, total_transactions)) +
+    geom_col(fill = "#2c3e50")  +
+     theme(
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+## transactions by store
+```{r}
+transactions_stores %>% 
+    group_by(store_nbr)%>% 
+    summarise(total_transactions = sum(transactions)) %>% 
+    mutate(store_nbr = store_nbr %>% as_factor() %>% fct_reorder(total_transactions)) %>%
+    ggplot(aes(store_nbr, total_transactions)) +
+    geom_col(fill = "#2c3e50")  +
+     theme(
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+
+
+## top 20 items by sales
+```{r}
+train_data_items_holidays %>% 
+    group_by(item_nbr)%>% 
+    summarise(total_sales = sum(unit_sales)) %>% 
+    arrange(desc(total_sales)) %>%
+    top_n(20) %>%
+    mutate(item_nbr = item_nbr %>% as_factor() %>% fct_reorder(total_sales)) %>%
+    ggplot(aes(item_nbr, total_sales)) +
+    geom_col(fill = "#2c3e50")  +
+     theme(
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```    
+
+
+## sales by day of the month
+```{r}
+train_data_items_holidays %>% 
+    group_by(day)%>% 
+    summarise(avg_sales = mean((unit_sales))) %>% 
+    ggplot() + geom_col(aes(x = day, y = avg_sales),fill = "#2c3e50") 
+``` 
+
+
+
+## weekly sales trend
+```{r}
+train_data_items_holidays %>% 
+    group_by(weekday)%>%
+    summarise(avg_sales = mean(unit_sales)) %>%
+    ggplot() + geom_col(aes(x = weekday, y = avg_sales),fill = "#2c3e50") +
+    ggtitle("weekly sales") +
+    xlab("weekday") + ylab("avg sales")
+``` 
+  
