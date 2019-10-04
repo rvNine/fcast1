@@ -120,9 +120,9 @@ glimpse(train_data_f)
 
 ## time series data for a store,item
 
-Top 2 items by sales: 1503844, 1047679
-Top 2 store_nbr by sales:  44, 45
-Considering time series of store 44, Item 1503844
+
+Top 2 stores by sales:  44, 45
+Considering time series of store 44, Item 1503823
 ```{r}
 
 train_data_f[, ':='(
@@ -135,7 +135,7 @@ data_wide <- dcast(train_data_f, store_item ~ date, value.var = "unit_sales", fi
 
 ```{r}
 data_item <- data_wide %>% 
-    filter(store_item == "44_1503844")
+    filter(store_item == "44_1503823")
 
 
 ``` 
@@ -239,8 +239,7 @@ plot(fit_prophet, forecast)
   colnames(residuals_f) <- c("res")
   head(residuals_f)
   ggplot(residuals_f, aes(res)) + 
-  geom_histogram( breaks = seq(-600, 600, by=100),
-                  col="red", 
+  geom_histogram( col="red", 
                   fill="green", 
                   alpha=.2)
   
