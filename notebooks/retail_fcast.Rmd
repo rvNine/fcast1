@@ -1,5 +1,5 @@
 ---
-title: "Retail Sales Forecasting"
+title: "Big Time Series Forecasting"
 output:
   pdf_document:
     toc: yes
@@ -31,6 +31,38 @@ knitr::opts_chunk$set(
 
 # Introduction
 
+Time series forecasting is a key component in the automation and optimization of business processes.
+In recent years because of the availability of large, diverse time series data, forecasting techniques are becoming more data driven and automated. 
+
+This project explores methods to forecast Big Time Series using classical modeling of time series and Modern approaches. 
+
+
+## Challenges
+
+Some challenges related to processing Big time series and manual forecasting processes are as following:
+
+`Lack of Automation`  Manual, Error prone forecasting processes are common at many companies. This also leads to issues with scalability. 
+
+`Computation Time` Processing hundreds of thousands of time series using manual processes takes a lot of time which might cause issues with Business stakeholders.
+
+`Lack of Resources` Creating forecasts for thousands of stores or SKUs could involve dedicated effort from several quantitative experts which might not be feasible for many companies.
+
+`Bias/Accuracy Issues`  Manual forecasting systems involving human interventions leads to more errors and biases in the forecasting process.  
+
+`Large/diverse data sources`  How can we build statistical models to learn to forecast from large and diverse data sources? How can we leverage the statistical power of “similar’’ time series to improve forecasts in the case of limited observations?
+
+
+## Corporación Favorita
+
+Brick-and-mortar grocery stores are always in a delicate dance with purchasing and sales forecasting. Predict a little over, and grocers are stuck with overstocked, perishable goods. Guess a little under, and popular items quickly sell out, leaving money on the table and customers fuming.
+
+The problem becomes more complex as retailers add new locations with unique needs, new products, ever transitioning seasonal tastes, and unpredictable product marketing. 
+
+Corporación Favorita, a large Ecuadorian-based grocery retailer, knows this all too well. They operate hundreds of supermarkets, with over 200,000 different products on their shelves.  They currently rely on subjective forecasting methods with very little data to back them up and very little automation to execute plans.
+
+# Data
+
+The data is taken from Kaggle competition Corporación Favorita Grocery Sales Forecasting.
 
 The training data includes dates, store and item information, whether that item was being promoted, as well as the unit sales. Additional files include supplementary information that may be useful in building your models.
 
@@ -75,6 +107,67 @@ Negative values of unit_sales represent returns of that particular item.
 - A magnitude 7.8 earthquake struck Ecuador on April 16, 2016. People rallied in relief efforts donating water and other first need products which greatly affected supermarket sales for several weeks after the earthquake.
 
 
+# Approach
+
+## Tools 
+
+R, RStudio, R Markdown, AWS, tsfresh
+
+Open source R forecasting Packages:
+
+forecast: Rob Hyndman’s R package is among the most popular packages. Contains implementations for many classic methods.
+
+prophet: Facebook’s Prophet package uses Stan behind the scences.
+
+## Exploratory analysis
+
+Plot sample data. Are there consistent patterns? Is there a significant trend? Is seasonality important? Is there evidence of the presence of business cycles? Are there any outliers in the data that need to be explained by those with expert knowledge? How strong are the relationships among the variables available for analysis?
+
+## Forecasting Methods
+
+Classical methods for Forecasting:
+
+`Average method`
+
+Here, the forecasts of all future values are equal to the average (or “mean”) of the historical data. Average method is used as the baseline model for comparing accuracy metrics.
+
+`ARIMA`
+
+The auto.arima() function in R uses a variation of the Hyndman-Khandakar algorithm (Hyndman & Khandakar, 2008), which combines unit root tests, minimisation of the AICc and MLE to obtain an ARIMA model. The arguments to auto.arima() provide for many variations on the algorithm. 
+
+`Exponential Smoothing`
+
+Exponential Smoothing State Space Model
+
+`Prophet`
+
+Prophet is a procedure for forecasting time series data based on an additive model where non-linear trends are fit with yearly, weekly, and daily seasonality, plus holiday effects. 
+
+Implementation code: src/process_fcast.R
+
+## Evaluation
+Dataset will be split into train/test based on the date index. Test set will contain the last 16 days data.
+
+Following accuracy measures were computed for all the time series: 
+
+Scale dependent accuracy measures  - Mean absolute error: MAE, Root mean squared error: RMSE 
+
+Mean Absolute Percentage Error: MAPE
+
+Mean Absolute Scaled Error: MASE
+
+Mean RMSE of all the time series was used in this report as the Evaluation Metric to compare the forecasting methods.
+
+
+For sample time series, the following plots will be shown:
+
+
+(1) Predicted vs Actual scatterplot
+
+(2) Predicted vs Residuals scatterplot
+
+(3) Histogram of Residuals
+
 
 # Time Series forecasting
 
@@ -110,7 +203,6 @@ train_data_f <- fread('../data/raw/train.csv', skip = 36458909,
 
 ```{r}
 summary(train_data_f)
-gc()
 ```
 
 ```{r}
@@ -183,19 +275,19 @@ data_item <- data_wide %>%
     forecast_arima
 ```
 
-## accuracy metrics
+## Accuracy Metrics (Arima)
 ```{r}
     t_data <- test_data$y %>% as.numeric()
     accuracy_arima <- forecast::accuracy(forecast_arima, t_data)
     accuracy_arima
 ```  
 
-## arima forecast
+## Arima forecast plot
 ```{r}
    autoplot(forecast_arima)
 ``` 
 
-## check residuals
+## Arima residuals plot
 ```{r}
     checkresiduals(fit_arima)
 ``` 
@@ -253,16 +345,83 @@ plot(fit_prophet, forecast)
     accuracy_prophet <- forecast::accuracy(forecast$yhat, t_data)
     accuracy_prophet
 ```  
-## Accuracy measures (Multiple time series)
-Accuracy measures for the 18310 time series considering Top 5 store numbers ( 44, 45, 47, 3, 49 )  by total sales as the baseline for processing multiple time series. 
+## Accuracy measures (Big Time Series)
+Accuracy measures for the 18310 time series considering Top 5 store numbers ( 44, 45, 47, 3, 49 )  by total sales as the baseline for processing multiple time series are shown below. AWS EC2 Instance Type, c5.2xlarge was used for processing.
 
 
--                  "mean_rmse",       "time_taken"
-- mean         7.45920546451115,      "40.76 mins"
-- ets          8.0311892817118,       "48.55 mins"
-- auto.arima   6.589306454993,        "7.83 hours"
-- prophet      7.49642904779891,      "3.24 hours"
+ Method     |      Mean RMSE     |     Time
+------------|--------------------|----------------
+ mean       |  7.45920546451115  |    40.76 mins
+ ets        |  8.0311892817118   |    48.55 mins
+ auto.arima |  6.589306454993    |    7.83 hours
+ prophet    |  7.49642904779891  |    3.24 hours
 
 
+# Conclusions and Future Work
 
+In this project we have explored use of classical time series models like Arima, ETS and prophet to forecast Big Time Series. From the accuracy measures above, Auto Arima was the best performing forecasting method. 
+
+Other approaches to consider for possible improvements:
+
+1) Feature Engineering
+
+2) Use Alternate Data
+
+3) Multivariate - Machine Learning Techniques
+
+4) Ensemble Models
+
+5) Deep Learning Techniques
+
+6) Tools like tsfresh, DataRobot, H2O, Amazon Forecast
+ 
+# Recommendations to the Client
+
+Retailers face varying product demand due to diverse factors, such as weather or short-lived trends.
+Diverse variables influence demand and, consequently, product sales. Relevant data related to the
+below Demand Influencing factors of retail supply chains would help in improving the forecasting process.
+
+Demand Forecast Categories      |      Influence Factors   
+--------------------------------|--------------------------------------------------------
+|  Products                     |      Quality
+|                               |      Competitors, substitutes, complements Price
+|                               |
+|  Consumer preferences         |      Fashions and trends
+|                               |
+|                               |    
+|  External factors             |      Buying behavior, Brand awareness and perception    
+|                               |      Weather
+|                               |      Special events
+|                               |      Seasonality
+|                               |      Income level, economic outlook
+|                               |      Local development
+|                               |      Mega trends (demographics, technology, climate, etc.)
+|                               |
+|                               |
+|  Marketing Factors            |      Promotions
+|                               |      Advertisement
+|                               |
+|  Shop Factors                 |      Local competition
+|                               |      Shop attractiveness
+|                               |      Shop assortment and layout
+|                               |
+|  Supply factors               |      Available products at point of sale
+|                               |      Expiring products
+
+
+Another recommendation - additional data related to business objectives and constraints will help in adding a prescriptive analytics layer (i.e actions) on the top of forecasting process. This will help the decision-maker with the ‘What if?’ question: so I have a prediction, now what do I do?
+
+# References
+
+1) Rob J Hyndman and George Athanasopoulos, Forecasting: Principles and Practice,  (https://otexts.com/fpp2/)
+
+2) Christos Faloutsos et al., Forecasting Big Time Series: Theory and Practice
+
+3) Erik Hofmann, Emanuel Rutschmann, Big data analytics and demand forecasting in supply chains: a conceptual analysis
+
+4) Christ, Kempa-Liehr, Feindt: Distributed and parallel time series feature extraction for industrial big data applications (https://arxiv.org/pdf/1610.07717.pdf)
+
+5) https://aws.amazon.com/forecast/
+
+6) https://www.datarobot.com/
  
